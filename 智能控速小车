@@ -1,0 +1,165 @@
+#include <Microduino_Motor.h>
+#include <IRremote.h>
+#include <U8glib.h>
+#define INTERVAL_LCD             20             //定义OLED刷新时间间隔 
+#define mic_pin A2
+#include <Adafruit_NeoPixel.h> //引用此文件
+#define PIN 6   //led灯控制引脚
+#define PIN_NUM 2 //允许接的led灯的个数
+#define val_max 255
+#define val_min 0   
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIN_NUM, PIN, NEO_GRB + NEO_KHZ800);  //该函数第一个参数控制串联灯的个数，第二个是控制用哪个pin脚输出，第三个显示颜色和变化闪烁频率
+
+int sensorValue2;
+
+int RECV_PIN = 10;
+IRrecv irrecv(RECV_PIN);
+decode_results results;
+unsigned long lcd_time = millis();                 //OLED刷新时间计时器
+U8GLIB_SSD1306_128X64
+u8g(U8G_I2C_OPT_NONE);     //设置OLED型号  //-------字体设置，大、中、小
+#define setFont_L u8g.setFont(u8g_font_7x13)
+#define setFont_M u8g.setFont(u8g_font_fixed_v0r)
+#define setFont_S u8g.setFont(u8g_font_fixed_v0r)
+#define setFont_SS u8g.setFont(u8g_font_fub25n)
+
+Motor MotorLeft(MOTOR0_PINA, MOTOR0_PINB);
+Motor MotorRight(MOTOR1_PINA, MOTOR1_PINB);
+
+#define Light_PIN A0  //光照传感器接AO引脚
+#define Light_value1 100
+#define Light_value2 210
+int sensorValue;
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("Microduino_Motor!");
+    strip.begin(); //准备对灯珠进行数据发送
+  strip.show(); //初始化LED为关的状态
+ irrecv.enableIRIn(); // 启动红外解码
+    Serial.println("Initialisation complete.");
+    
+  MotorLeft.begin();
+  MotorRight.begin();
+  pinMode(mic_pin, INPUT);
+}
+
+void loop()
+{
+   rainbowCycle( 255, 0, 0, 10); //红色呼吸
+  rainbowCycle( 0, 255, 0, 10); //绿色呼吸
+  rainbowCycle( 0, 0, 255, 10); //蓝色呼吸
+  //sensorValue = analogRead(Light_PIN); //光检测
+ // Serial.println("Forward!");
+ if (irrecv.decode(&results))
+  {
+    Serial.println(results.value, HEX);
+    u8g.firstPage();
+    do {
+        setFont_L;
+        u8g.setPrintPos(4, 16);
+        if(results.value==0x1FE40BF)
+        {
+        u8g.print("stop");
+        MotorLeft.setSpeed(0);
+  MotorRight.setSpeed(0);
+        }
+        
+        
+        else if(results.value==0x1FE807F)
+        {
+        u8g.print("light control ");
+       
+       do{
+        sensorValue = analogRead(Light_PIN); //光检测
+         Serial.println(sensorValue);
+        if (sensorValue < Light_value1) //若光强小于100
+ { 
+  MotorLeft.setSpeed(-10);
+  MotorRight.setSpeed(-10);
+  }
+ else if (sensorValue >= Light_value1 && sensorValue < Light_value2)
+ {
+   MotorLeft.setSpeed(-300);
+  MotorRight.setSpeed(-300);
+  }
+  else if(sensorValue>Light_value2)
+  {
+     MotorLeft.setSpeed(-600);
+  MotorRight.setSpeed(-600);
+    }
+   // irrecv.resume();  //接收下一个值
+   if(results.value!=0x1FEC03F)
+    break;
+       }while( 1);
+      }
+
+        
+       else if(results.value==0x1FEC03F)
+        {
+        u8g.print("continue");
+        MotorLeft.setSpeed(200);
+  MotorRight.setSpeed(200);
+        }
+       
+    
+   
+    else if(results.value==0x1FE20DF)
+    {
+      sensorValue2 = analogRead(mic_pin);
+      u8g.print("sound control");
+      Serial.println(sensorValue2);
+      if(sensorValue2<400)
+  {
+     MotorLeft.setSpeed(-600);
+  MotorRight.setSpeed(-600);
+    }
+    else if(sensorValue2>400)
+    {
+       MotorLeft.setSpeed(10);
+  MotorRight.setSpeed(10);
+      }
+      }
+       else
+       { u8g.print(results.value,HEX);
+       Serial.println(results.value,HEX);
+       }
+        
+  
+  }
+    while( u8g.nextPage() );
+    irrecv.resume();  //接收下一个值
+ 
+}
+}
+/*“rainbowCycle( int r, int g, int b, uint8_t wait)”函数说明：
+r：红色值（0-255）。g：绿色值（0-255）。b：蓝色值（0-255）。
+“uint8_t wait”定义呼吸的速度，数值越小呼吸速度越快*/
+
+void colorSet(uint32_t c) 
+{
+  for (uint16_t i = 0; i < strip.numPixels(); i++) 
+  //从0自增到LED灯个数减1
+{
+strip.setPixelColor(i, c); //此函数表示将第i个LED点亮
+}
+  strip.show(); //LED灯显示
+}
+
+void rainbowCycle( int r, int g, int b, uint8_t wait) {
+  for (int val = 0; val < 255; val++) 
+  //val由0自增到254不断循环
+  {
+colorSet(strip.Color(map(val, val_min, val_max, 0, r), map(val, val_min, val_max, 0, g), map(val, val_min, val_max, 0, b)));
+//红绿蓝LED灯依次从暗到亮
+/*“map(val,x,y,m,n)”函数为映射函数，可将某个区间的值（x-y）变幻成（m-n），val则是你需要用来映射的数据*/
+    delay(wait); //延时
+  }
+  for (int val = 255; val >= 0; val--)  //val从255自减到0不断循环
+  {
+colorSet(strip.Color(map(val, val_min, val_max, 0, r), map(val, val_min, val_max, 0, g), map(val, val_min, val_max, 0, b)));
+//红绿蓝LED灯依次由亮到暗
+    delay(wait); //延时
+  }
+}
